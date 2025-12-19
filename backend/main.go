@@ -9,29 +9,17 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
-	_ "github.com/lib/pq"
-	"todo-backend/database"
 	"todo-backend/models"
 )
 
 func main() {
-	db, err := database.Connect()
-	if err != nil {
-		log.Fatal("Failed to connect to database:", err)
-	}
-	defer db.Close()
-
-	if err := database.InitSchema(db); err != nil {
-		log.Fatal("Failed to initialize schema:", err)
-	}
-
 	r := mux.NewRouter()
 
 	api := r.PathPrefix("/api").Subrouter()
-	api.HandleFunc("/todos", getTodos(db)).Methods("GET")
-	api.HandleFunc("/todos", createTodo(db)).Methods("POST")
-	api.HandleFunc("/todos/{id}", updateTodo(db)).Methods("PUT")
-	api.HandleFunc("/todos/{id}", deleteTodo(db)).Methods("DELETE")
+	api.HandleFunc("/todos", getTodos).Methods("GET")
+	api.HandleFunc("/todos", createTodo).Methods("POST")
+	api.HandleFunc("/todos/{id}", updateTodo).Methods("PUT")
+	api.HandleFunc("/todos/{id}", deleteTodo).Methods("DELETE")
 
 	staticDir := os.Getenv("STATIC_DIR")
 	if staticDir == "" {
@@ -75,76 +63,67 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func getTodos(db *database.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		todos, err := models.GetAllTodos(db)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		json.NewEncoder(w).Encode(todos)
+func getTodos(w http.ResponseWriter, r *http.Request) {
+	todos, err := models.GetAllTodos()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	json.NewEncoder(w).Encode(todos)
 }
 
-func createTodo(db *database.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var todo models.Todo
-		if err := json.NewDecoder(r.Body).Decode(&todo); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		if err := models.CreateTodo(db, &todo); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(todo)
+func createTodo(w http.ResponseWriter, r *http.Request) {
+	var todo models.Todo
+	if err := json.NewDecoder(r.Body).Decode(&todo); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
+
+	if err := models.CreateTodo(&todo); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(todo)
 }
 
-func updateTodo(db *database.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		id, err := strconv.Atoi(vars["id"])
-		if err != nil {
-			http.Error(w, "Invalid ID", http.StatusBadRequest)
-			return
-		}
-
-		var todo models.Todo
-		if err := json.NewDecoder(r.Body).Decode(&todo); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		todo.ID = id
-
-		if err := models.UpdateTodo(db, &todo); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(todo)
+func updateTodo(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
 	}
+
+	var todo models.Todo
+	if err := json.NewDecoder(r.Body).Decode(&todo); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	todo.ID = id
+
+	if err := models.UpdateTodo(&todo); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(todo)
 }
 
-func deleteTodo(db *database.DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		vars := mux.Vars(r)
-		id, err := strconv.Atoi(vars["id"])
-		if err != nil {
-			http.Error(w, "Invalid ID", http.StatusBadRequest)
-			return
-		}
-
-		if err := models.DeleteTodo(db, id); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusNoContent)
+func deleteTodo(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id, err := strconv.Atoi(vars["id"])
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
 	}
-}
 
+	if err := models.DeleteTodo(id); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
